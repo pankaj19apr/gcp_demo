@@ -1,0 +1,128 @@
+Here's a comprehensive, well-engineered prompt you can use with Claude (or any AI) to generate your Dataflow project:
+
+---
+
+## 🎯 Master Prompt for Dataflow Batch Pipeline
+
+Copy and use this prompt:
+
+---
+
+```
+You are a senior Java/GCP data engineer. Create a complete, production-ready 
+Apache Beam / Google Dataflow project in Java with the following specifications:
+
+## PROJECT STRUCTURE
+Generate a Maven project with this layout:
+  dataflow-flat-file-processor/
+  ├── pom.xml
+  ├── src/main/java/com/example/pipeline/
+  │   ├── FlatFilePipeline.java          # Main pipeline entry point
+  │   ├── options/PipelineOptions.java   # Custom pipeline options
+  │   ├── model/
+  │   │   ├── HeaderRecord.java          # Header POJO
+  │   │   └── DetailRecord.java          # Detail POJO
+  │   ├── transforms/
+  │   │   ├── ParseFlatFileTransform.java
+  │   │   ├── RouteByHeaderTransform.java
+  │   │   └── BigQueryWriteTransform.java
+  │   └── schema/
+  │       └── SchemaConfig.java          # Schema registry per header type
+  └── src/main/resources/
+      └── schema-config.json             # JSON schema definitions
+
+## FLAT FILE FORMAT
+The input flat file (in GCS) follows this structure:
+- Each "section" starts with a HEADER record (identified by a type code in column 1-2, e.g. "H1", "H2")
+- Each header is followed by N DETAIL records (identified by "D1", "D2" etc.)
+- A file can contain MULTIPLE header types (e.g. H1+D1 sections and H2+D2 sections interleaved)
+- File is pipe-delimited (|), UTF-8, stored in GCS
+
+Example file layout:
+  H1|ORDER_ID|CUSTOMER_ID|ORDER_DATE|TOTAL_AMOUNT
+  D1|LINE_ID|PRODUCT_ID|QTY|UNIT_PRICE|DISCOUNT
+  D1|LINE_ID|PRODUCT_ID|QTY|UNIT_PRICE|DISCOUNT
+  H2|SHIPMENT_ID|CARRIER|SHIP_DATE|TRACKING_NO
+  D2|PKG_ID|WEIGHT|DIMENSIONS|STATUS
+
+## BIGQUERY TARGET TABLES
+Map each record type to a BQ table:
+  H1 → dataset.orders          (order_id, customer_id, order_date, total_amount)
+  D1 → dataset.order_lines     (line_id, order_id [FK from parent H1], product_id, qty, unit_price, discount)
+  H2 → dataset.shipments       (shipment_id, carrier, ship_date, tracking_no)
+  D2 → dataset.packages        (pkg_id, shipment_id [FK from parent H2], weight, dimensions, status)
+
+CRITICAL: Detail records must inherit the parent header's ID as a foreign key.
+
+## TECHNICAL REQUIREMENTS
+1. Apache Beam SDK: 2.55.0
+2. Java: 11+
+3. Runner: DataflowRunner (with DirectRunner support for local testing)
+4. BQ write method: STORAGE_WRITE_API (exactly-once semantics)
+5. File reading: TextIO.read() from GCS path (gs://bucket/path/*.txt)
+6. Error handling: Dead-letter pattern — unparseable records → GCS error bucket
+7. Pipeline options: --inputFile, --project, --dataset, --tempLocation, --stagingLocation
+8. Use TupleTag and PCollectionTuple for branching/routing by record type
+9. Schema: Drive BQ table schemas from SchemaConfig.java (not hardcoded inline)
+10. Logging: SLF4J throughout
+
+## CODE QUALITY REQUIREMENTS
+- Full Javadoc on all public classes and methods
+- Unit tests using JUnit 5 + TestPipeline for each Transform class
+- A README.md with: build instructions, GCS file format spec, deployment command
+- pom.xml with: beam-sdks-java-core, beam-runners-google-cloud-dataflow-java,
+  beam-sdks-java-io-google-cloud-platform, slf4j, junit5, lombok
+
+## OUTPUT
+Generate ALL files completely — no placeholders, no "// TODO", no truncation.
+Start with pom.xml, then each Java class, then schema-config.json, then README.md.
+```
+
+---
+
+## 💡 Follow-up Refinement Prompts
+
+Use these after the initial generation:
+
+**For custom schema:**
+```
+Update SchemaConfig.java to load schema definitions from the 
+schema-config.json file at runtime. Each entry should define: 
+headerCode, recordFields[], targetTable, and foreignKeyField.
+```
+
+**For error handling:**
+```
+Enhance the dead-letter pattern: failed records should write to 
+GCS as JSON with fields: rawLine, errorMessage, errorTimestamp, 
+pipelineJobId. Add a DeadLetterRecord POJO and DeadLetterTransform.
+```
+
+**For testing:**
+```
+Generate full unit tests for ParseFlatFileTransform using 
+TestPipeline, covering: valid H1+D1 pairs, missing header, 
+malformed delimiter, empty file, and FK inheritance validation.
+```
+
+**For deployment:**
+```
+Generate a shell script deploy.sh that builds the fat JAR with 
+maven-shade-plugin and submits the Dataflow job with all required 
+flags for a production environment on GCP.
+```
+
+---
+
+## 🗂️ Key Architecture Decisions Baked In
+
+| Concern | Approach |
+|---|---|
+| Multi-header routing | `TupleTag` per record type |
+| FK inheritance | Stateful `DoFn` carrying parent header ID |
+| BQ writes | `STORAGE_WRITE_API` per table |
+| Schema flexibility | External JSON config, not hardcoded |
+| Bad records | Dead-letter to GCS |
+| Local dev | `DirectRunner` flag |
+
+This prompt is structured to give you a **complete, runnable project** rather than skeleton code — the key is specifying "no placeholders, no truncation" explicitly.
